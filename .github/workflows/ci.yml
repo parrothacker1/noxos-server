@@ -1,19 +1,15 @@
-name: ci
+name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [ "main" ]
   pull_request:
-    branches: [main]
+    branches: [ "main" ]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.26"
-      - run: go build ./...
-      - run: go vet ./...
-      - run: go test ./...
+      - name: Run manifest transform tests
+        run: ./scripts/test-build-manifest.sh

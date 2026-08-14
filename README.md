@@ -1,47 +1,39 @@
 # noxos-server
 
-NoxOS OTA update server. Custom signed OTA channel using AOSP's `ota_from_target_files` tooling (that tooling lives in `noxos-os`, not here), self-hosted — same pattern as LineageOS/GrapheneOS/CalyxOS updater backends.
+Static OTA manifest publisher for NoxOS. No running service — a scheduled GitHub Action rebuilds a static manifest tree from [noxos-os](https://github.com/parrothacker1/noxos-os)'s GitHub Releases and publishes it to GitHub Pages.
 
-This repo is just the update-check API and static file serving of the signed OTA package zips. No build system, no signing, no device management UI, no database.
+## Why no server
 
-Part of [NoxOS](https://github.com/parrothacker1/noxos). Status: skeleton (Phase IV of the roadmap).
+The OTA artifacts already live on GitHub Releases (versioned, free, well understood). Once you have that, an "update check" is just "read a small JSON file" — that doesn't need a live server, a database, or a cloud function. It needs a file that gets regenerated when a release ships.
 
-## API
+## How it works
 
-`GET /api/v1/{device}/{type}/{incremental}`
+1. `.github/workflows/publish-manifest.yml` runs on a schedule (every 6h) and on manual dispatch.
+2. `scripts/fetch-releases.sh` pulls every release + asset from `noxos-os` via the GitHub API.
+3. `scripts/build-manifest.sh` parses each `.zip` asset's filename (`noxos-<version>-<YYYYMMDD>-<channel>-<device>.zip`), groups builds by device/channel, and writes `docs/<device>/<channel>.json` — sorted newest-first, one file per device+channel, no per-request filtering needed.
+4. `docs/` gets published to GitHub Pages.
+5. The client (`noxos-app`) fetches `https://parrothacker1.github.io/noxos-server/<device>/<channel>.json`, compares its own `incremental` against the list, and picks what to download itself — no server-side version-diffing logic.
 
-Returns the OTA builds available for `device` on channel `type` (e.g. `nightly`), excluding any build matching the client's current `incremental`. Shape follows the LineageOS updater API convention:
+Manifest entry shape:
 
 ```json
-{
-  "response": [
-    {
-      "device": "sunfish",
-      "type": "nightly",
-      "incremental": "eng.root.20260101.000000",
-      "filename": "noxos-1.0-20260101-nightly-sunfish.zip",
-      "timestamp": 1767225600,
-      "size": 838860800,
-      "sha256": "...",
-      "version": "1.0",
-      "url": "/builds/noxos-1.0-20260101-nightly-sunfish.zip"
-    }
-  ]
-}
+{"device":"sunfish","type":"nightly","incremental":"v1.2.0","filename":"noxos-1.2-20260301-nightly-sunfish.zip",
+ "timestamp":1772323200,"size":900000000,"sha256":"...","version":"1.2","url":"https://github.com/.../noxos-1.2-....zip",
+ "changelog":"release notes body"}
 ```
 
-Build metadata is read from `builds/index.json` (checked in with one placeholder entry documenting the shape). The actual OTA package files are served statically from `builds/` at `/builds/<filename>`.
+`sha256` comes from an optional `<filename>.sha256` sidecar asset uploaded alongside the zip; if absent, it's `null` rather than downloading and hashing multi-GB images in CI.
 
-`GET /healthz` returns `200 ok`.
+## Deliberately not built
 
-## Running locally
+- **No patch chaining.** A device more than one version behind downloads the latest full image, not a sequence of incrementals. Real ROM projects (LineageOS, GrapheneOS) avoid N-hop delta chains for the same reason: one failed hop mid-chain breaks the update, and pre-building deltas for every version pair doesn't scale.
+- **No push notifications.** The client polls on a schedule. Push would mean either Firebase Cloud Messaging (conflicts with being GMS-independent) or a self-hosted UnifiedPush relay (real infra this project doesn't need yet).
+
+## Local testing
 
 ```sh
-go run main.go
+./scripts/test-build-manifest.sh   # transform logic against testdata/releases.json, no network needed
+./scripts/generate-manifest.sh     # full pipeline against the real noxos-os repo, needs `gh` auth
 ```
 
-Listens on `:8080` by default. Override with `NOXOS_SERVER_ADDR` and `NOXOS_BUILDS_DIR` env vars.
-
-```sh
-curl http://localhost:8080/api/v1/sunfish/nightly/none
-```
+Part of [NoxOS](https://github.com/parrothacker1/noxos). Status: manifest generator built and tested against a fixture; unverified against real `noxos-os` releases since none exist yet (Phase 1 hasn't produced a build).

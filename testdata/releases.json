@@ -1,0 +1,48 @@
+[
+  {
+    "tag_name": "v1.1.0",
+    "published_at": "2026-02-01T00:00:00Z",
+    "body": "second nightly",
+    "assets": [
+      {
+        "name": "noxos-1.1-20260201-nightly-sunfish.zip",
+        "size": 900000000,
+        "browser_download_url": "https://example.invalid/v1.1.0/noxos-1.1-20260201-nightly-sunfish.zip"
+      },
+      {
+        "name": "noxos-1.1-20260201-nightly-sunfish.zip.sha256",
+        "size": 65,
+        "browser_download_url": "https://example.invalid/v1.1.0/noxos-1.1-20260201-nightly-sunfish.zip.sha256"
+      }
+    ]
+  },
+  {
+    "tag_name": "v1.0.0",
+    "published_at": "2026-01-01T00:00:00Z",
+    "body": "first nightly",
+    "assets": [
+      {
+        "name": "noxos-1.0-20260101-nightly-sunfish.zip",
+        "size": 838860800,
+        "browser_download_url": "https://example.invalid/v1.0.0/noxos-1.0-20260101-nightly-sunfish.zip"
+      }
+    ]
+  },
+  {
+    "tag_name": "v1.0.0-cf",
+    "published_at": "2026-01-01T01:00:00Z",
+    "body": "first cuttlefish x86_64 build",
+    "assets": [
+      {
+        "name": "noxos-1.0-20260101-nightly-cf_x86_64.zip",
+        "size": 750000000,
+        "browser_download_url": "https://example.invalid/v1.0.0-cf/noxos-1.0-20260101-nightly-cf_x86_64.zip"
+      },
+      {
+        "name": "source.tar.gz",
+        "size": 100,
+        "browser_download_url": "https://example.invalid/v1.0.0-cf/source.tar.gz"
+      }
+    ]
+  }
+]
