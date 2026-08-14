@@ -12,7 +12,7 @@ The OTA artifacts already live on GitHub Releases (versioned, free, well underst
 2. `scripts/fetch-releases.sh` pulls every release + asset from `noxos-os` via the GitHub API.
 3. `scripts/build-manifest.sh` parses each `.zip` asset's filename (`noxos-<version>-<YYYYMMDD>-<channel>-<device>.zip`), groups builds by device/channel, and writes `docs/<device>/<channel>.json` — sorted newest-first, one file per device+channel, no per-request filtering needed.
 4. `docs/` gets published to GitHub Pages.
-5. The client (`noxos-app`) fetches `https://parrothacker1.github.io/noxos-server/<device>/<channel>.json`, compares its own `incremental` against the list, and picks what to download itself — no server-side version-diffing logic.
+5. The client (`noxos-app`) fetches `https://parrothacker1.is-a.dev/noxos-server/<device>/<channel>.json` (custom domain configured on this GitHub account's Pages sites — not the default `github.io` URL), compares its own `incremental` against the list, and picks what to download itself — no server-side version-diffing logic.
 
 Manifest entry shape:
 
