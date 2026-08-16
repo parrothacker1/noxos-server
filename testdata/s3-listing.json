@@ -1,0 +1,31 @@
+{
+  "full": [
+    {
+      "Key": "full/noxos-1.1-20260201-nightly-sunfish.zip",
+      "Size": 900000000,
+      "LastModified": "2026-02-01T00:00:00.000Z"
+    },
+    {
+      "Key": "full/noxos-1.0-20260101-nightly-sunfish.zip",
+      "Size": 838860800,
+      "LastModified": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "Key": "full/noxos-1.0-20260101-nightly-cf_x86_64.zip",
+      "Size": 750000000,
+      "LastModified": "2026-01-01T01:00:00.000Z"
+    },
+    {
+      "Key": "full/source.tar.gz",
+      "Size": 100,
+      "LastModified": "2026-01-01T01:00:00.000Z"
+    }
+  ],
+  "patches": [
+    {
+      "Key": "patches/noxos-1.0-to-1.1-20260201-nightly-sunfish.patch.zip",
+      "Size": 90000000,
+      "LastModified": "2026-02-01T00:05:00.000Z"
+    }
+  ]
+}

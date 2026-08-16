@@ -1,85 +1,112 @@
 #!/usr/bin/env bash
-# Transforms a GitHub Releases API response (array of release objects) into
-# static per-device/channel OTA manifests. Pure transform, no network calls
-# except optionally curling .sha256 sidecar assets - kept separate from
-# fetch-releases.sh so this half is unit-testable against a fixture.
-#
-# Usage: build-manifest.sh <releases.json> <out_dir>
-#
-# Asset naming convention: noxos-<version>-<YYYYMMDD>-<channel>-<device>.zip
-# Optional sidecar: same name + ".sha256" (plain text, one hex hash).
 set -euo pipefail
 
-RELEASES_JSON="${1:?usage: build-manifest.sh <releases.json> <out_dir>}"
-OUT_DIR="${2:?usage: build-manifest.sh <releases.json> <out_dir>}"
-FILENAME_RE='^noxos-([^-]+)-([0-9]{8})-([^-]+)-([^.]+)\.zip$'
+LISTING_JSON="${1:?usage: build-manifest.sh <listing.json> <base_url> <out_dir>}"
+BASE_URL="${2:?usage: build-manifest.sh <listing.json> <base_url> <out_dir>}"
+OUT_DIR="${3:?usage: build-manifest.sh <listing.json> <base_url> <out_dir>}"
+
+FULL_RE='^full/noxos-([^-]+)-([0-9]{8})-([^-]+)-([^.]+)\.zip$'
+PATCH_RE='^patches/noxos-([^-]+)-to-([^-]+)-([0-9]{8})-([^-]+)-([^.]+)\.patch\.zip$'
 
 mkdir -p "$OUT_DIR"
 
-# Flatten releases -> candidate zip assets, carrying along the sidecar's
-# download URL (if present) so we don't have to re-scan assets per entry.
-candidates=$(jq -c '
-  [.[] as $r | ($r.assets // [])[] as $a |
-    select($a.name | test("\\.zip$")) |
-    {
-      tag: $r.tag_name,
-      published_at: $r.published_at,
-      body: ($r.body // ""),
-      name: $a.name,
-      size: $a.size,
-      url: $a.browser_download_url,
-      sha256_url: (($r.assets[] | select(.name == ($a.name + ".sha256")) | .browser_download_url) // null)
-    }
-  ]
-' "$RELEASES_JSON")
+fetch_sidecar() {
+  curl -fsSL --max-time 10 "$1" 2>/dev/null || true
+}
 
 work_dir=$(mktemp -d)
 trap 'rm -rf "$work_dir"' EXIT
 
-echo "$candidates" | jq -c '.[]' | while read -r entry; do
-  name=$(jq -r '.name' <<<"$entry")
-  [[ "$name" =~ $FILENAME_RE ]] || continue
+jq -c '.full[]' "$LISTING_JSON" | while read -r obj; do
+  key=$(jq -r '.Key' <<<"$obj")
+  [[ "$key" =~ $FULL_RE ]] || continue
   version="${BASH_REMATCH[1]}"
   channel="${BASH_REMATCH[3]}"
   device="${BASH_REMATCH[4]}"
 
-  sha256_url=$(jq -r '.sha256_url' <<<"$entry")
-  sha256="null"
-  if [[ "$sha256_url" != "null" ]]; then
-    if ! sha256=$(curl -fsSL --max-time 10 "$sha256_url" 2>/dev/null | awk '{print $1}') || [[ -z "$sha256" ]]; then
-      echo "warning: could not fetch sha256 sidecar for $name, leaving null" >&2
-      sha256="null"
-    fi
+  size=$(jq -r '.Size' <<<"$obj")
+  timestamp=$(date -u -d "$(jq -r '.LastModified' <<<"$obj")" +%s)
+  url="${BASE_URL%/}/${key}"
+
+  sha256=$(fetch_sidecar "${url}.sha256" | awk '{print $1}')
+  if [[ -z "$sha256" ]]; then
+    sha256="null"
+    echo "warning: no sha256 sidecar for $key" >&2
   fi
 
-  published_at=$(jq -r '.published_at' <<<"$entry")
-  timestamp=$(date -u -d "$published_at" +%s)
+  changelog=$(fetch_sidecar "${url%.zip}.changelog.txt")
 
   build=$(jq -n \
-    --arg device "$device" \
-    --arg type "$channel" \
-    --arg incremental "$(jq -r '.tag' <<<"$entry")" \
-    --arg filename "$name" \
-    --argjson timestamp "$timestamp" \
-    --argjson size "$(jq -r '.size' <<<"$entry")" \
-    --arg sha256 "$sha256" \
-    --arg version "$version" \
-    --arg url "$(jq -r '.url' <<<"$entry")" \
-    --arg changelog "$(jq -r '.body' <<<"$entry")" \
+    --arg device "$device" --arg type "$channel" --arg incremental "$version" \
+    --arg filename "$(basename "$key")" --argjson timestamp "$timestamp" \
+    --argjson size "$size" --arg sha256 "$sha256" --arg version "$version" \
+    --arg url "$url" --arg changelog "$changelog" \
     '{device:$device,type:$type,incremental:$incremental,filename:$filename,
       timestamp:$timestamp,size:$size,
       sha256:(if $sha256=="null" then null else $sha256 end),
       version:$version,url:$url,changelog:$changelog}')
 
   mkdir -p "$work_dir/$device"
-  echo "$build" >>"$work_dir/$device/$channel.jsonl"
+  echo "$build" >>"$work_dir/$device/$channel.full.jsonl"
+done
+
+jq -c '.patches[]' "$LISTING_JSON" | while read -r obj; do
+  key=$(jq -r '.Key' <<<"$obj")
+  [[ "$key" =~ $PATCH_RE ]] || continue
+  from="${BASH_REMATCH[1]}"
+  to="${BASH_REMATCH[2]}"
+  channel="${BASH_REMATCH[4]}"
+  device="${BASH_REMATCH[5]}"
+
+  size=$(jq -r '.Size' <<<"$obj")
+  timestamp=$(date -u -d "$(jq -r '.LastModified' <<<"$obj")" +%s)
+  url="${BASE_URL%/}/${key}"
+
+  sha256=$(fetch_sidecar "${url}.sha256" | awk '{print $1}')
+  if [[ -z "$sha256" ]]; then
+    sha256="null"
+    echo "warning: no sha256 sidecar for $key" >&2
+  fi
+
+  patch=$(jq -n \
+    --arg device "$device" --arg type "$channel" --arg from "$from" --arg to "$to" \
+    --arg filename "$(basename "$key")" --argjson timestamp "$timestamp" \
+    --argjson size "$size" --arg sha256 "$sha256" --arg url "$url" \
+    '{device:$device,type:$type,from:$from,to:$to,filename:$filename,
+      timestamp:$timestamp,size:$size,
+      sha256:(if $sha256=="null" then null else $sha256 end),url:$url}')
+
+  mkdir -p "$work_dir/$device"
+  echo "$patch" >>"$work_dir/$device/$channel.patch.jsonl"
 done
 
 rm -rf "${OUT_DIR:?}"/*
-for f in "$work_dir"/*/*.jsonl; do
-  [[ -e "$f" ]] || continue
+shopt -s nullglob
+
+for f in "$work_dir"/*/*.full.jsonl; do
   device=$(basename "$(dirname "$f")")
-  channel=$(basename "$f" .jsonl)
+  channel=$(basename "$f" .full.jsonl)
   mkdir -p "$OUT_DIR/$device"
-  jq -s 'sort_by(-.timestamp) | {response: .}' "$f" >"$OUT_DIR/$device/$channel.json"
+
+  response=$(jq -s 'sort_by(-.timestamp)' "$f")
+  patch_file="$work_dir/$device/$channel.patch.jsonl"
+  if [[ -e "$patch_file" ]]; then
+    patches=$(jq -s 'sort_by(-.timestamp)' "$patch_file")
+  else
+    patches="[]"
+  fi
+
+  jq -n --argjson response "$response" --argjson patches "$patches" \
+    '{response:$response, patches:$patches}' >"$OUT_DIR/$device/$channel.json"
+done
+
+for f in "$work_dir"/*/*.patch.jsonl; do
+  device=$(basename "$(dirname "$f")")
+  channel=$(basename "$f" .patch.jsonl)
+  out_file="$OUT_DIR/$device/$channel.json"
+  [[ -e "$out_file" ]] && continue
+
+  mkdir -p "$OUT_DIR/$device"
+  patches=$(jq -s 'sort_by(-.timestamp)' "$f")
+  jq -n --argjson patches "$patches" '{response:[], patches:$patches}' >"$out_file"
 done

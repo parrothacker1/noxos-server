@@ -19,9 +19,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Generate manifest from noxos-os releases
+      - name: Generate manifest from S3 release bucket
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}
+          NOXOS_S3_BUCKET: ${{ vars.NOXOS_S3_BUCKET }}
+          NOXOS_S3_BASE_URL: ${{ vars.NOXOS_S3_BASE_URL }}
         run: ./scripts/generate-manifest.sh docs
       - uses: actions/upload-pages-artifact@v3
         with:
